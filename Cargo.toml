@@ -1,0 +1,15 @@
+[package]
+name = "ios-notif-forward"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ancs = "0.2.0"
+btleplug = { version = "0.10.5", features = ["serde"] }
+futures = "0.3.28"
+notify-rust = "4.8.0"
+tokio = { version = "1.28.1", features = ["full"] }
+uuid = { version = "1.3.3", features = ["serde"] }
+
