@@ -12,6 +12,7 @@ use futures::stream::StreamExt;
 use notify_rust::{Notification, NotificationHandle, Hint, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::io::Write;
 use std::time::Duration;
 use tokio::time;
 use uuid::Uuid;
@@ -166,13 +167,17 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                         }
                     }*/
                 }
+                else {
+                    println!("couldn't parse appinfo");
+                }
             },
             _ => {
+                println!("unknown command {}", &command_byte);
             }
         }
     }
     else {
-        println!("but it's missing a command byte");
+        println!("missing a command byte");
     }
     Ok(())
 }
@@ -268,7 +273,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // get the first bluetooth adapter
     let adapters = manager.adapters().await?;
-    let central = adapters.into_iter().nth(0).unwrap();
+    for a in &adapters {
+        println!("{}", a.adapter_info().await?);
+    }
+    let central = if adapters.len() == 1 {
+        &adapters[0]
+    }
+    else {
+        print!("choose: ");
+        std::io::stdout().flush()?;
+        let mut line1 = String::new();
+        std::io::stdin().read_line(&mut line1)?;
+        &adapters[line1.trim().parse::<usize>()?]
+    };
 
     // start scanning for devices
     central.start_scan(ScanFilter { services: vec![Uuid::try_parse(ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID).unwrap()] }).await?;
@@ -279,7 +296,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
     // find the device we're interested in
     let peripherals = central.peripherals().await?;
-    let peripheral = peripherals.first().unwrap();
+    for p in &peripherals {
+        let local_name = match p.properties().await.unwrap().unwrap().local_name {
+            Some(name) => name,
+            None => p.address().to_string()
+        };
+        println!("{}", local_name);
+    }
+    let peripheral = if peripherals.len() == 1 {
+        &peripherals[0]
+    }
+    else {
+        print!("choose: ");
+        std::io::stdout().flush()?;
+        let mut line2 = String::new();
+        std::io::stdin().read_line(&mut line2)?;
+        &peripherals[line2.trim().parse::<usize>()?]
+    };
     let local_name = match peripheral.properties().await.unwrap().unwrap().local_name {
         Some(name) => name,
         None => peripheral.address().to_string()
