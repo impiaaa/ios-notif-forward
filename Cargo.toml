@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ancs = { git = "https://github.com/ianmarmour/ancs.git", rev = "a093822" }
+ancs = { git = "https://github.com/impiaaa/ancs.git", rev = "97a602a" }
 btleplug = { version = "0.10.5", features = ["serde"] }
 futures = "0.3.28"
 notify-rust = "4.8.0"
