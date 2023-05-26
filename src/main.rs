@@ -16,7 +16,7 @@ use btleplug::api::{
 };
 use btleplug::platform::{Manager, Peripheral};
 use futures::stream::StreamExt;
-use notify_rust::{Hint, Notification, NotificationHandle, Urgency};
+use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::io::Write;
@@ -141,7 +141,7 @@ async fn update_notif_with_notif_attributes(
             }
             NotificationAttributeID::NegativeActionLabel => {
                 if let Some(label) = &attr.value {
-                    send.action("dialog-cancel", &label);
+                    send.action("dialog-close", &label);
                 }
             }
         }
@@ -165,6 +165,14 @@ async fn update_notif_with_notif_attributes(
     Ok(())
 }
 
+// only XDG can update notifications
+#[cfg(all(unix, not(target_os = "macos")))]
+fn update_handle(handle: &mut NotificationHandle) {
+    handle.update();
+}
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn update_handle(_handle: &mut NotificationHandle) {}
+
 async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug::Error> {
     if let Some(command_byte) = value.first() {
         match CommandID::try_from(command_byte.clone()) {
@@ -177,8 +185,8 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                         &recv.attribute_list,
                     )
                     .await?;
-                    if let Some(send) = app.sent_notifs.get_mut(&recv.notification_uid) {
-                        send.update();
+                    if let Some(handle) = app.sent_notifs.get_mut(&recv.notification_uid) {
+                        update_handle(handle);
                     }
                     if let Some(send) = app.pending_notifs.remove(&recv.notification_uid) {
                         if let Ok(handle) = send.show() {
@@ -207,11 +215,11 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                                                 {
                                                     send.appname(&appname);
                                                 }
-                                                if let Some(send) =
+                                                if let Some(handle) =
                                                     app.sent_notifs.get_mut(&notification_uid)
                                                 {
-                                                    send.appname(&appname);
-                                                    send.update();
+                                                    handle.appname(&appname);
+                                                    update_handle(handle);
                                                 }
                                             }
                                         }
@@ -278,6 +286,7 @@ async fn set_notif_from_gatt(
     }
     if recv.event_flags.contains(EventFlag::Important) {
         set_urgency(&mut send, Urgency::Critical);
+        send.timeout(Timeout::Never);
     }
     if recv.category_id != CategoryID::Other {
         add_hint(
@@ -304,13 +313,13 @@ async fn set_notif_from_gatt(
             CategoryID::IncomingCall => "call-start",
             CategoryID::MissedCall => "call-missed",
             CategoryID::Voicemail => "media-tape",
-            CategoryID::Social => "system-users",
-            CategoryID::Schedule => "task-due",
-            CategoryID::Email => "mail-unread",
-            CategoryID::News => "application-rss+xml",
+            CategoryID::Social => "internet-group-chat",
+            CategoryID::Schedule => "calendar-month",
+            CategoryID::Email => "internet-mail",
+            CategoryID::News => "application-rss+xml", // mime type not great
             CategoryID::HealthAndFitness => "applications-health",
-            CategoryID::BusinessAndFinance => "money",
-            CategoryID::Location => "mark-location",
+            CategoryID::BusinessAndFinance => "applications-office",
+            CategoryID::Location => "maps",
             CategoryID::Entertainment => "applications-multimedia",
             CategoryID::Other => unreachable!(),
         });
@@ -345,14 +354,6 @@ async fn set_notif_from_gatt(
     }
     Ok(())
 }
-
-// only XDG can update notifications
-#[cfg(all(unix, not(target_os = "macos")))]
-fn update_handle(handle: &mut NotificationHandle) {
-    handle.update();
-}
-#[cfg(not(all(unix, not(target_os = "macos"))))]
-fn update_handle(_handle: &mut NotificationHandle) {}
 
 // only XDG can remove notifications
 #[cfg(all(unix, not(target_os = "macos")))]
