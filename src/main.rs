@@ -1,11 +1,12 @@
+use ancs::attributes::NotificationAttribute;
 use ancs::attributes::app::AppAttributeID;
 use ancs::attributes::category::CategoryID;
 use ancs::attributes::command::CommandID;
 use ancs::attributes::event::{EventID, EventFlag};
 use ancs::attributes::notification::NotificationAttributeID;
 use ancs::characteristics::control_point::{GetNotificationAttributesRequest, GetAppAttributesRequest};
-use ancs::characteristics::data_source::{GetNotificationAttributesResponse, GetAppAttributesResponse, NotificationAttribute};
-use ancs::characteristics::notification_source::GattNotification;
+use ancs::characteristics::data_source::{GetNotificationAttributesResponse, GetAppAttributesResponse};
+use ancs::characteristics::notification_source::Notification as GattNotification;
 use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter, WriteType, Characteristic};
 use btleplug::platform::{Manager, Peripheral};
 use futures::stream::StreamExt;
@@ -146,17 +147,17 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
             Ok(CommandID::GetAppAttributes) => {
                 if let Ok((_, recv)) = GetAppAttributesResponse::parse(&value) {
                     println!("{:?}", recv);
-                    /*for attr in &recv.attribute_list {
+                    for attr in &recv.attribute_list {
                         match attr.id {
                             AppAttributeID::DisplayName => {
                                 if let Some(appname) = &attr.value {
-                                    app.app_names.insert(recv.app_identifier, appname.clone());
+                                    app.app_names.insert(recv.app_identifier.clone(), appname.clone());
                                     if let Some(needs_appname) = app.needs_appname.remove(&recv.app_identifier) {
                                         for notification_uid in needs_appname {
-                                            if let Some(send) = app.pending_notifs.get(&notification_uid) {
+                                            if let Some(send) = app.pending_notifs.get_mut(&notification_uid) {
                                                 send.appname(&appname);
                                             }
-                                            if let Some(send) = app.sent_notifs.get(&notification_uid) {
+                                            if let Some(send) = app.sent_notifs.get_mut(&notification_uid) {
                                                 send.appname(&appname);
                                                 send.update();
                                             }
@@ -165,7 +166,7 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                                 }
                             }
                         }
-                    }*/
+                    }
                 }
                 else {
                     println!("couldn't parse appinfo");

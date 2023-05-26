@@ -14,8 +14,7 @@ dependencies = [
 [[package]]
 name = "ancs"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dc05c182541695ffc1b8cd312359a1e1bd1cc091094088dc9818633a731b79e"
+source = "git+https://github.com/ianmarmour/ancs.git?rev=a093822#a0938226409c5c061aed5778f988041e78f306c5"
 dependencies = [
  "nom",
 ]
