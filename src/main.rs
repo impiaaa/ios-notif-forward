@@ -8,7 +8,7 @@ use ancs::attributes::NotificationAttribute;
 use ancs::characteristics::control_point::*;
 use ancs::characteristics::data_source::*;
 use ancs::characteristics::notification_source::Notification as GattNotification;
-use btleplug::api::{Central, Characteristic, Manager as _, Peripheral as _, WriteType};
+use btleplug::api::{Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, WriteType};
 use btleplug::platform::{Manager, Peripheral};
 use futures::stream::StreamExt;
 use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
@@ -483,7 +483,7 @@ async fn watch_device(
     mut quit_rx: watch::Receiver<()>,
     mut disconnect_rx: oneshot::Receiver<()>
 ) -> Result<(), btleplug::Error> {
-    // find the characteristic we want
+    // find the characteristics we want
     let chars = peripheral.characteristics();
     // Support for the Notification Source characteristic is mandatory
     let ns_char = chars
@@ -569,37 +569,39 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let central = &adapters[0];
     println!("using adapter {}", central.adapter_info().await?);
 
-    // find the device we're interested in
-    let mut peripherals = central.peripherals().await?;
-    println!("connected to {} peripherals", peripherals.len());
-    for p in &peripherals {
-        p.discover_services().await?;
-    }
-    let mut i = 0;
-    while i < peripherals.len() {
-        if !&peripherals[i]
-            .services()
-            .iter()
-            .any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID)
-        {
-            peripherals.remove(i);
-        } else {
-            i += 1;
-        }
-    }
-    if peripherals.len() == 0 {
-        println!("no suitable peripherals found");
-        return Ok(());
-    }
     let (quit_tx, quit_rx) = watch::channel(());
     let mut tasks = tokio::task::JoinSet::new();
-    let mut disconnect_txs = Vec::with_capacity(peripherals.len());
-    for peripheral in peripherals.into_iter() {
-        let (disconnect_tx, disconnect_rx) = oneshot::channel();
-        disconnect_txs.push(disconnect_tx);
-        tasks.spawn(watch_device(peripheral, quit_rx.clone(), disconnect_rx));
+    let mut disconnect_txs = HashMap::new();
+
+    let mut events = central.events().await?;
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                break;
+            },
+            Some(event) = events.next() => {
+                match event {
+                    CentralEvent::DeviceConnected(id) => {
+                        println!("new device connected: {:?}", &id);
+                        let peripheral = central.peripheral(&id).await?;
+                        peripheral.discover_services().await?;
+                        if peripheral.services().iter().any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID) {
+                            let (disconnect_tx, disconnect_rx) = oneshot::channel();
+                            disconnect_txs.insert(id.clone(), disconnect_tx);
+                            tasks.spawn(watch_device(peripheral, quit_rx.clone(), disconnect_rx));
+                        }
+                    },
+                    CentralEvent::DeviceDisconnected(id) => {
+                        println!("device disconnected: {:?}", &id);
+                        if let Some(disconnect_tx) = disconnect_txs.remove(&id) {
+                            disconnect_tx.send(()).unwrap();
+                        }
+                    },
+                    _ => {}
+                }
+            },
+        }
     }
-    tokio::signal::ctrl_c().await?;
     quit_tx.send(())?;
     while let Some(res) = tasks.join_next().await {
         res??;
