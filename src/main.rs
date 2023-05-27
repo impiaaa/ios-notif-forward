@@ -215,6 +215,10 @@ fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
             .event_flags
             .contains(EventFlag::NegativeAction)
     {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         std::thread::spawn(move || {
             notify_rust::handle_action(notif_id, |result| {
                 if let notify_rust::ActionResponse::Custom(action) = result {
@@ -233,14 +237,12 @@ fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
                             },
                         };
                         let out: Vec<u8> = req.into();
-                        tokio::runtime::Runtime::new()
-                            .unwrap()
-                            .block_on(peripheral.write(
-                                cp_char.as_ref().unwrap(),
-                                &out,
-                                WriteType::WithResponse,
-                            ))
-                            .unwrap();
+                        rt.block_on(peripheral.write(
+                            cp_char.as_ref().unwrap(),
+                            &out,
+                            WriteType::WithResponse,
+                        ))
+                        .unwrap();
                     }
                 }
             });
@@ -549,10 +551,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .iter()
         .find(|c| c.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID);
 
-    println!("got NS characteristic {:?}", ns_char);
+    println!("subscribing to NS {:?}", ns_char);
     peripheral.subscribe(&ns_char).await?;
     if let Some(ds_char_ok) = ds_char {
-        println!("got DS characteristic {:?}", ds_char_ok);
+        println!("subscribing to DS {:?}", ds_char_ok);
         peripheral.subscribe(&ds_char_ok).await?;
     }
 
@@ -571,25 +573,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     println!("listening");
-
+    
     // Process while the BLE connection is not broken or stopped.
-    while let Some(data) = notification_stream.next().await {
-        if data.uuid == ancs::characteristics::notification_source::NOTIFICATION_SOURCE_UUID {
-            handle_ns(&mut app, data.value).await?;
-        } else if data.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID {
-            handle_ds(&mut app, data.value).await?;
-        } else {
-            println!(
-                "got an unexpected uuid {:?} with message {:?}",
-                data.uuid, data.value
-            );
+    loop {
+        tokio::select! {
+            Ok(()) = tokio::signal::ctrl_c() => {
+                break;
+            },
+            Some(data) = notification_stream.next() => {
+                if data.uuid == ancs::characteristics::notification_source::NOTIFICATION_SOURCE_UUID {
+                    handle_ns(&mut app, data.value).await?;
+                } else if data.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID {
+                    handle_ds(&mut app, data.value).await?;
+                } else {
+                    println!(
+                        "got an unexpected uuid {:?} with message {:?}",
+                        data.uuid, data.value
+                    );
+                }
+            }
         }
     }
-
+    
+    println!("unsubscribing");
     if let Some(ds_char_ok) = app.ds_char {
-        app.peripheral.unsubscribe(&ds_char_ok).await;
+        if let Err(e) = app.peripheral.unsubscribe(&ds_char_ok).await {
+            println!("error unsubscribing from DS: {:?}", e);
+        }
     }
-    app.peripheral.unsubscribe(&app.ns_char).await;
+    if let Err(e) = app.peripheral.unsubscribe(&app.ns_char).await {
+        println!("error unsubscribing from NS: {:?}", e);
+    }
     //app.peripheral.disconnect().await?;
 
     Ok(())
