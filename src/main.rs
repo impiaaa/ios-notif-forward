@@ -8,17 +8,13 @@ use ancs::attributes::NotificationAttribute;
 use ancs::characteristics::control_point::*;
 use ancs::characteristics::data_source::*;
 use ancs::characteristics::notification_source::Notification as GattNotification;
-use btleplug::api::{
-    Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType,
-};
+use btleplug::api::{Central, Characteristic, Manager as _, Peripheral as _, WriteType};
 use btleplug::platform::{Manager, Peripheral};
 use futures::stream::StreamExt;
 use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::io::Write;
-use std::time::Duration;
-use tokio::time;
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -311,15 +307,15 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                         }
                     }
                 } else {
-                    println!("couldn't parse appinfo from message {:?}", &value);
+                    eprintln!("couldn't parse appinfo from message {:?}", &value);
                 }
             }
             _ => {
-                println!("unknown command in message {:?}", &value);
+                eprintln!("unknown command in message {:?}", &value);
             }
         }
     } else {
-        println!("missing a command byte");
+        eprintln!("missing a command byte");
     }
     Ok(())
 }
@@ -477,7 +473,7 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
             }
         }
     } else {
-        println!("couldn't parse NS message {:?}", &value);
+        eprintln!("couldn't parse NS message {:?}", &value);
     }
     Ok(())
 }
@@ -488,6 +484,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // get the first bluetooth adapter
     let adapters = manager.adapters().await?;
+    if adapters.len() == 0 {
+        println!("no adapters found");
+        return Ok(());
+    }
     for a in &adapters {
         println!("{}", a.adapter_info().await?);
     }
@@ -501,19 +501,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &adapters[line1.trim().parse::<usize>()?]
     };
 
-    // start scanning for devices
-    central
-        .start_scan(ScanFilter {
-            services: vec![ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID],
-        })
-        .await?;
-    // instead of waiting, you can use central.events() to get a stream which will
-    // notify you of new devices, for an example of that see examples/event_driven_discovery.rs
-    time::sleep(Duration::from_secs(2)).await;
-    central.stop_scan().await?;
-
     // find the device we're interested in
-    let peripherals = central.peripherals().await?;
+    let mut peripherals = central.peripherals().await?;
+    for p in &peripherals {
+        p.discover_services().await?;
+    }
+    let mut i = 0;
+    while i < peripherals.len() {
+        if !&peripherals[i]
+            .services()
+            .iter()
+            .any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID)
+        {
+            peripherals.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    if peripherals.len() == 0 {
+        println!("no peripherals found");
+        return Ok(());
+    }
     for p in &peripherals {
         let local_name = match p.properties().await.unwrap().unwrap().local_name {
             Some(name) => name,
@@ -530,12 +538,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         std::io::stdin().read_line(&mut line2)?;
         &peripherals[line2.trim().parse::<usize>()?]
     };
-
-    // connect to the device
-    peripheral.connect().await?;
-
-    // discover services and characteristics
-    peripheral.discover_services().await?;
 
     // find the characteristic we want
     let chars = peripheral.characteristics();
@@ -573,7 +575,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     println!("listening");
-    
+
     // Process while the BLE connection is not broken or stopped.
     loop {
         tokio::select! {
@@ -586,7 +588,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 } else if data.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID {
                     handle_ds(&mut app, data.value).await?;
                 } else {
-                    println!(
+                    eprintln!(
                         "got an unexpected uuid {:?} with message {:?}",
                         data.uuid, data.value
                     );
@@ -594,17 +596,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
-    
+
     println!("unsubscribing");
     if let Some(ds_char_ok) = app.ds_char {
         if let Err(e) = app.peripheral.unsubscribe(&ds_char_ok).await {
-            println!("error unsubscribing from DS: {:?}", e);
+            eprintln!("error unsubscribing from DS: {:?}", e);
         }
     }
     if let Err(e) = app.peripheral.unsubscribe(&app.ns_char).await {
-        println!("error unsubscribing from NS: {:?}", e);
+        eprintln!("error unsubscribing from NS: {:?}", e);
     }
-    //app.peripheral.disconnect().await?;
 
     Ok(())
 }
