@@ -22,10 +22,13 @@ use std::time::{Duration, Instant};
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tokio::sync::{oneshot, watch};
-use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, TrayIconBuilder};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::TrayIconBuilder;
 
 #[cfg(windows)]
 type NotificationHandle = Notification;
+
+const ICON_PATH: &str = "icon-32-white.png";
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -418,21 +421,30 @@ async fn set_notif_from_gatt(
                 .to_string(),
             ),
         );
+        // what to do here... XDG is the only one that supports icons at the moment,
+        // so we can assume freedesktop icons work. but not all of these are standard.
+        // XDG also supports icons in file:///, and so should Windows too eventually
+        // both XDG and Windows also support "images," but on Windows those are large
+        // could ship with icons for each category. Windows app store categories
+        // don't have icons. iOS app store does, but it doesn't cover all of them.
+        // XDG should ideally use themed icons, but again they're not all standard,
+        // or in the right categories.
         send.icon(match recv.category_id {
-            CategoryID::IncomingCall => "call-start",
-            CategoryID::MissedCall => "call-missed",
-            CategoryID::Voicemail => "media-tape",
-            CategoryID::Social => "internet-group-chat",
-            CategoryID::Schedule => "calendar-month",
-            CategoryID::Email => "internet-mail",
-            CategoryID::News => "application-rss+xml", // mime type not great
-            CategoryID::HealthAndFitness => "applications-health",
-            CategoryID::BusinessAndFinance => "applications-office",
-            CategoryID::Location => "maps",
-            CategoryID::Entertainment => "applications-multimedia",
+            CategoryID::IncomingCall => "call-start", // standard action
+            CategoryID::MissedCall => "call-missed",  // nonstandard
+            CategoryID::Voicemail => "media-tape",    // standard device
+            CategoryID::Social => "internet-group-chat", // or internet-chat? nonstandard
+            CategoryID::Schedule => "calendar-month", // or office-calendar? nonstandard
+            CategoryID::Email => "internet-mail",     // or mail-unread? nonstandard
+            CategoryID::News => "application-rss+xml", // nonstandard mime type
+            CategoryID::HealthAndFitness => "applications-health", // nonstandard category
+            CategoryID::BusinessAndFinance => "applications-office", // or money? standard category
+            CategoryID::Location => "maps",           // or mark-location? nonstandard
+            CategoryID::Entertainment => "applications-multimedia", // standard category
             CategoryID::Other => unreachable!(),
         });
     }
+    // macOS should get the default app icon from the bundle, XDG should get it from the desktop file
     if app.cp_char.is_some() {
         let mut attrs = vec![(NotificationAttributeID::Title, Some(u16::MAX))];
         if cfg!(any(windows, all(unix, not(target_os = "macos")))) {
@@ -479,6 +491,7 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
             EventID::NotificationAdded => {
                 let mut send = Notification::new();
                 add_hint(&mut send, Hint::ActionIcons(true));
+                add_hint(&mut send, Hint::DesktopEntry(env!("CARGO_PKG_NAME").into()));
                 let notification_uid = recv.notification_uid;
                 app.received_notifs.insert(notification_uid, recv);
                 app.pending_notifs.insert(notification_uid, send);
@@ -596,8 +609,7 @@ fn load_icon(path: &std::path::Path) -> tray_icon::icon::Icon {
         let rgba = image.into_raw();
         (rgba, width, height)
     };
-    tray_icon::icon::Icon::from_rgba(icon_rgba, icon_width, icon_height)
-        .expect("Failed to open icon")
+    tray_icon::icon::Icon::from_rgba(icon_rgba, icon_width, icon_height).unwrap()
 }
 
 fn main() {
@@ -605,18 +617,25 @@ fn main() {
 
     let quit_item = MenuItem::new("Quit", true, None);
     let quit_id = quit_item.id();
-    let tray_menu = Menu::with_items(&[&quit_item]);
-    let path = "/usr/share/icons/HighContrast/32x32/apps/preferences-system-notifications.png";
-    let icon = load_icon(std::path::Path::new(path));
+    let tray_menu = Menu::with_items(&[
+        &MenuItem::new(
+            concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION")),
+            false,
+            None,
+        ),
+        &PredefinedMenuItem::separator(),
+        &quit_item,
+    ]);
+    let icon_tray = load_icon(std::path::Path::new(ICON_PATH));
     let mut tray_icon = Some(
         TrayIconBuilder::new()
             .with_menu(Box::new(tray_menu))
-            .with_title(env!("CARGO_PKG_NAME"))
-            .with_tooltip(env!("CARGO_PKG_DESCRIPTION"))
-            .with_icon(icon)
+            .with_tooltip(env!("CARGO_BIN_NAME"))
+            .with_icon(icon_tray)
             .build()
             .unwrap(),
     );
+    tray_icon.as_mut().unwrap().set_icon_as_template(true);
 
     let (quit_tx, quit_rx) = watch::channel(());
     let rt = tokio::runtime::Runtime::new().unwrap();
