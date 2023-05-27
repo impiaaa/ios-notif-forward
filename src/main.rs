@@ -15,6 +15,7 @@ use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::io::Write;
+use tokio::sync::watch;
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -478,67 +479,10 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let manager = Manager::new().await?;
-
-    // get the first bluetooth adapter
-    let adapters = manager.adapters().await?;
-    if adapters.len() == 0 {
-        println!("no adapters found");
-        return Ok(());
-    }
-    for a in &adapters {
-        println!("{}", a.adapter_info().await?);
-    }
-    let central = if adapters.len() == 1 {
-        &adapters[0]
-    } else {
-        print!("choose: ");
-        std::io::stdout().flush()?;
-        let mut line1 = String::new();
-        std::io::stdin().read_line(&mut line1)?;
-        &adapters[line1.trim().parse::<usize>()?]
-    };
-
-    // find the device we're interested in
-    let mut peripherals = central.peripherals().await?;
-    for p in &peripherals {
-        p.discover_services().await?;
-    }
-    let mut i = 0;
-    while i < peripherals.len() {
-        if !&peripherals[i]
-            .services()
-            .iter()
-            .any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID)
-        {
-            peripherals.remove(i);
-        } else {
-            i += 1;
-        }
-    }
-    if peripherals.len() == 0 {
-        println!("no peripherals found");
-        return Ok(());
-    }
-    for p in &peripherals {
-        let local_name = match p.properties().await.unwrap().unwrap().local_name {
-            Some(name) => name,
-            None => p.address().to_string(),
-        };
-        println!("{}", local_name);
-    }
-    let peripheral = if peripherals.len() == 1 {
-        &peripherals[0]
-    } else {
-        print!("choose: ");
-        std::io::stdout().flush()?;
-        let mut line2 = String::new();
-        std::io::stdin().read_line(&mut line2)?;
-        &peripherals[line2.trim().parse::<usize>()?]
-    };
-
+async fn watch_device(
+    peripheral: Peripheral,
+    mut quit_rx: watch::Receiver<()>,
+) -> Result<(), btleplug::Error> {
     // find the characteristic we want
     let chars = peripheral.characteristics();
     // Support for the Notification Source characteristic is mandatory
@@ -579,7 +523,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Process while the BLE connection is not broken or stopped.
     loop {
         tokio::select! {
-            Ok(()) = tokio::signal::ctrl_c() => {
+            Ok(()) = quit_rx.changed() => {
                 break;
             },
             Some(data) = notification_stream.next() => {
@@ -606,6 +550,67 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if let Err(e) = app.peripheral.unsubscribe(&app.ns_char).await {
         eprintln!("error unsubscribing from NS: {:?}", e);
     }
+    Ok(())
+}
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let manager = Manager::new().await?;
+
+    // get the first bluetooth adapter
+    let adapters = manager.adapters().await?;
+    if adapters.len() == 0 {
+        println!("no adapters found");
+        return Ok(());
+    }
+    let central = &adapters[0];
+    println!("using adapter {}", central.adapter_info().await?);
+
+    // find the device we're interested in
+    let mut peripherals = central.peripherals().await?;
+    println!("connected to {} peripherals", peripherals.len());
+    for p in &peripherals {
+        p.discover_services().await?;
+    }
+    let mut i = 0;
+    while i < peripherals.len() {
+        if !&peripherals[i]
+            .services()
+            .iter()
+            .any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID)
+        {
+            peripherals.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    if peripherals.len() == 0 {
+        println!("no suitable peripherals found");
+        return Ok(());
+    }
+    for (i, p) in peripherals.iter().enumerate() {
+        let local_name = match p.properties().await.unwrap().unwrap().local_name {
+            Some(name) => name,
+            None => p.address().to_string(),
+        };
+        println!("{}: {}", i, local_name);
+    }
+    let peripheral = if peripherals.len() == 1 {
+        peripherals.into_iter().next().unwrap()
+    } else {
+        print!("choose: ");
+        std::io::stdout().flush()?;
+        let mut line2 = String::new();
+        std::io::stdin().read_line(&mut line2)?;
+        peripherals
+            .into_iter()
+            .nth(line2.trim().parse::<usize>()?)
+            .unwrap()
+    };
+    let (quit_tx, quit_rx) = watch::channel(());
+    let join_handle = tokio::spawn(watch_device(peripheral, quit_rx.clone()));
+    tokio::signal::ctrl_c().await?;
+    quit_tx.send(())?;
+    join_handle.await??;
     Ok(())
 }
