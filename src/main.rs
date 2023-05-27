@@ -8,13 +8,19 @@ use ancs::attributes::NotificationAttribute;
 use ancs::characteristics::control_point::*;
 use ancs::characteristics::data_source::*;
 use ancs::characteristics::notification_source::Notification as GattNotification;
-use btleplug::api::{Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, WriteType};
+use btleplug::api::{
+    Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, WriteType,
+};
 use btleplug::platform::{Manager, Peripheral};
 use futures::stream::StreamExt;
 use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use tokio::sync::{watch, oneshot};
+use std::time::{Duration, Instant};
+use tokio::sync::{oneshot, watch};
+use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, TrayIconBuilder};
+use tao::event::{Event, WindowEvent};
+use tao::event_loop::{ControlFlow, EventLoop};
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -481,7 +487,7 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
 async fn watch_device(
     peripheral: Peripheral,
     mut quit_rx: watch::Receiver<()>,
-    mut disconnect_rx: oneshot::Receiver<()>
+    mut disconnect_rx: oneshot::Receiver<()>,
 ) -> Result<(), btleplug::Error> {
     // find the characteristics we want
     let chars = peripheral.characteristics();
@@ -556,8 +562,79 @@ async fn watch_device(
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn load_icon(path: &std::path::Path) -> tray_icon::icon::Icon {
+    let (icon_rgba, icon_width, icon_height) = {
+        let image = image::open(path)
+            .expect("Failed to open icon path")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
+    };
+    tray_icon::icon::Icon::from_rgba(icon_rgba, icon_width, icon_height)
+        .expect("Failed to open icon")
+}
+
+fn main() {
+    let event_loop = EventLoop::new();
+    
+    let quit_item = MenuItem::new("Quit", true, None);
+    let quit_id = quit_item.id();
+    let tray_menu = Menu::with_items(&[&quit_item]);
+    let path = "/usr/share/icons/HighContrast/32x32/apps/preferences-system-notifications.png";
+    let icon = load_icon(std::path::Path::new(path));
+    let mut tray_icon = Some(
+        TrayIconBuilder::new()
+            .with_menu(Box::new(tray_menu))
+            .with_title(env!("CARGO_PKG_NAME"))
+            .with_tooltip(env!("CARGO_PKG_DESCRIPTION"))
+            .with_icon(icon)
+            .build()
+            .unwrap()
+    );
+
+    let (quit_tx, quit_rx) = watch::channel(());
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let mut join_handle = Some(std::thread::spawn(move || {
+        rt.block_on(inner_main(quit_rx.clone())).unwrap()
+    }));
+
+    let menu_channel = MenuEvent::receiver();
+
+    println!("starting event loop");
+    event_loop.run(move |window_event, _, control_flow| {
+        *control_flow = ControlFlow::WaitUntil(Instant::now()+Duration::new(1, 0));
+        if join_handle.is_none() || join_handle.as_ref().unwrap().is_finished() {
+            println!("bt thread is finished");
+            tray_icon.take();
+            *control_flow = ControlFlow::Exit;
+        }
+        if let Ok(menu_event) = menu_channel.try_recv() {
+            println!("got menu event {:?}", menu_event);
+            if menu_event.id == quit_id {
+                quit_tx.send(()).unwrap();
+                join_handle.take().unwrap().join().unwrap();
+                tray_icon.take();
+                *control_flow = ControlFlow::Exit;
+            }
+        }
+        match window_event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                println!("close requested");
+                quit_tx.send(()).unwrap();
+                join_handle.take().unwrap().join().unwrap();
+                tray_icon.take();
+                *control_flow = ControlFlow::Exit;
+            }
+            _ => (),
+        }
+    });
+}
+
+async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Error>> {
     let manager = Manager::new().await?;
 
     // get the first bluetooth adapter
@@ -569,14 +646,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let central = &adapters[0];
     println!("using adapter {}", central.adapter_info().await?);
 
-    let (quit_tx, quit_rx) = watch::channel(());
     let mut tasks = tokio::task::JoinSet::new();
     let mut disconnect_txs = HashMap::new();
 
     let mut events = central.events().await?;
     loop {
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
+            _ = quit_rx.changed() => {
                 break;
             },
             Some(event) = events.next() => {
@@ -602,7 +678,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             },
         }
     }
-    quit_tx.send(())?;
     while let Some(res) = tasks.join_next().await {
         res??;
     }
