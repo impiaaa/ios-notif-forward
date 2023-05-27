@@ -14,7 +14,7 @@ dependencies = [
 [[package]]
 name = "ancs"
 version = "0.2.0"
-source = "git+https://github.com/impiaaa/ancs.git?rev=97a602a#97a602a02d6a9a3c43d979b262ecfa305723f00a"
+source = "git+https://github.com/impiaaa/ancs.git?rev=b607e24#b607e24eb587eee362c24dda7dd0e0478f36d2b5"
 dependencies = [
  "bitflags 2.3.1",
  "nom",

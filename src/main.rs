@@ -1,15 +1,12 @@
+use ancs::attributes::action::ActionID;
 use ancs::attributes::app::AppAttributeID;
 use ancs::attributes::category::CategoryID;
 use ancs::attributes::command::CommandID;
 use ancs::attributes::event::{EventFlag, EventID};
 use ancs::attributes::notification::NotificationAttributeID;
 use ancs::attributes::NotificationAttribute;
-use ancs::characteristics::control_point::{
-    GetAppAttributesRequest, GetNotificationAttributesRequest,
-};
-use ancs::characteristics::data_source::{
-    GetAppAttributesResponse, GetNotificationAttributesResponse,
-};
+use ancs::characteristics::control_point::*;
+use ancs::characteristics::data_source::*;
 use ancs::characteristics::notification_source::Notification as GattNotification;
 use btleplug::api::{
     Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType,
@@ -25,6 +22,7 @@ use tokio::time;
 
 struct AppGlobals {
     peripheral: Peripheral,
+    received_notifs: HashMap<u32, GattNotification>,
     pending_notifs: HashMap<u32, Notification>,
     sent_notifs: HashMap<u32, NotificationHandle>,
     app_names: HashMap<String, String>,
@@ -84,6 +82,20 @@ fn set_app_id(send: &mut Notification, appid: &str) {
 #[cfg(not(windows))]
 fn set_app_id(_send: &mut Notification, _appid: &str) {}
 
+fn action_id_for_notif(recv: Option<&GattNotification>, action: ActionID) -> &'static str {
+    if recv.is_some() && recv.unwrap().category_id == CategoryID::IncomingCall {
+        match action {
+            ActionID::Positive => "call-start",
+            ActionID::Negative => "call-stop",
+        }
+    } else {
+        match action {
+            ActionID::Positive => "dialog-ok",
+            ActionID::Negative => "dialog-close",
+        }
+    }
+}
+
 async fn update_notif_with_notif_attributes(
     app: &mut AppGlobals,
     notification_uid: u32,
@@ -136,12 +148,24 @@ async fn update_notif_with_notif_attributes(
             NotificationAttributeID::Date => {}
             NotificationAttributeID::PositiveActionLabel => {
                 if let Some(label) = &attr.value {
-                    send.action("dialog-ok", &label);
+                    send.action(
+                        action_id_for_notif(
+                            app.received_notifs.get(&notification_uid),
+                            ActionID::Positive,
+                        ),
+                        &label,
+                    );
                 }
             }
             NotificationAttributeID::NegativeActionLabel => {
                 if let Some(label) = &attr.value {
-                    send.action("dialog-close", &label);
+                    send.action(
+                        action_id_for_notif(
+                            app.received_notifs.get(&notification_uid),
+                            ActionID::Negative,
+                        ),
+                        &label,
+                    );
                 }
             }
         }
@@ -173,6 +197,59 @@ fn update_handle(handle: &mut NotificationHandle) {
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 fn update_handle(_handle: &mut NotificationHandle) {}
 
+// only XDG can handle actions
+#[cfg(all(unix, not(target_os = "macos")))]
+fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
+    let received_notif = app.received_notifs.get(&notification_uid);
+    let pos_action_id = action_id_for_notif(received_notif, ActionID::Positive);
+    let neg_action_id = action_id_for_notif(received_notif, ActionID::Negative);
+    let peripheral = app.peripheral.clone();
+    let cp_char = app.cp_char.clone();
+
+    if received_notif
+        .unwrap()
+        .event_flags
+        .contains(EventFlag::PositiveAction)
+        || received_notif
+            .unwrap()
+            .event_flags
+            .contains(EventFlag::NegativeAction)
+    {
+        std::thread::spawn(move || {
+            notify_rust::handle_action(notif_id, |result| {
+                if let notify_rust::ActionResponse::Custom(action) = result {
+                    if action == &pos_action_id || action == &neg_action_id {
+                        println!(
+                            "performing {} action for notification {}",
+                            &action, &notification_uid
+                        );
+                        let req = PerformNotificationActionRequest {
+                            command_id: CommandID::PerformNotificationAction,
+                            notification_uid: notification_uid,
+                            action_id: if action == &pos_action_id {
+                                ActionID::Positive
+                            } else {
+                                ActionID::Negative
+                            },
+                        };
+                        let out: Vec<u8> = req.into();
+                        tokio::runtime::Runtime::new()
+                            .unwrap()
+                            .block_on(peripheral.write(
+                                cp_char.as_ref().unwrap(),
+                                &out,
+                                WriteType::WithResponse,
+                            ))
+                            .unwrap();
+                    }
+                }
+            });
+        });
+    }
+}
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn add_action_handlers(_app: &AppGlobals, _notif_id: u32, _notification_uid: u32) {}
+
 async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug::Error> {
     if let Some(command_byte) = value.first() {
         match CommandID::try_from(command_byte.clone()) {
@@ -190,7 +267,10 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                     }
                     if let Some(send) = app.pending_notifs.remove(&recv.notification_uid) {
                         if let Ok(handle) = send.show() {
-                            app.sent_notifs.insert(recv.notification_uid, handle);
+                            let notif_id = handle.id();
+                            let notification_uid = recv.notification_uid;
+                            app.sent_notifs.insert(notification_uid, handle);
+                            add_action_handlers(app, notif_id, notification_uid);
                         }
                     }
                 }
@@ -271,9 +351,9 @@ fn has_capability(_cap: &str) -> bool {
 
 async fn set_notif_from_gatt(
     app: &mut AppGlobals,
-    recv: &GattNotification,
     notification_uid: u32,
 ) -> Result<(), btleplug::Error> {
+    let recv = app.received_notifs.get(&notification_uid).unwrap();
     let mut send = if app.pending_notifs.contains_key(&notification_uid) {
         app.pending_notifs.get_mut(&notification_uid).unwrap()
     } else if app.sent_notifs.contains_key(&notification_uid) {
@@ -370,14 +450,18 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
             EventID::NotificationAdded => {
                 let mut send = Notification::new();
                 add_hint(&mut send, Hint::ActionIcons(true));
-                app.pending_notifs.insert(recv.notification_uid, send);
-                set_notif_from_gatt(app, &recv, recv.notification_uid).await?;
+                let notification_uid = recv.notification_uid;
+                app.received_notifs.insert(notification_uid, recv);
+                app.pending_notifs.insert(notification_uid, send);
+                set_notif_from_gatt(app, notification_uid).await?;
             }
             EventID::NotificationModified => {
                 if cfg!(all(unix, not(target_os = "macos"))) {
                     // only XDG can update notifications, so don't request details
-                    set_notif_from_gatt(app, &recv, recv.notification_uid).await?;
-                    if let Some(handle) = app.sent_notifs.get_mut(&recv.notification_uid) {
+                    let notification_uid = recv.notification_uid;
+                    app.received_notifs.insert(notification_uid, recv);
+                    set_notif_from_gatt(app, notification_uid).await?;
+                    if let Some(handle) = app.sent_notifs.get_mut(&notification_uid) {
                         update_handle(handle);
                     }
                 }
@@ -387,6 +471,7 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                     close_handle(handle);
                 }
                 app.pending_notifs.remove(&recv.notification_uid);
+                app.received_notifs.remove(&recv.notification_uid);
             }
         }
     } else {
@@ -475,6 +560,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut app = AppGlobals {
         peripheral: peripheral.clone(),
+        received_notifs: HashMap::new(),
         pending_notifs: HashMap::new(),
         sent_notifs: HashMap::new(),
         app_names: HashMap::new(),
@@ -504,7 +590,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         app.peripheral.unsubscribe(&ds_char_ok).await;
     }
     app.peripheral.unsubscribe(&app.ns_char).await;
-    app.peripheral.disconnect().await?;
+    //app.peripheral.disconnect().await?;
 
     Ok(())
 }
