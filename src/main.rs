@@ -17,10 +17,10 @@ use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::time::{Duration, Instant};
-use tokio::sync::{oneshot, watch};
-use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, TrayIconBuilder};
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
+use tokio::sync::{oneshot, watch};
+use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, TrayIconBuilder};
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -577,7 +577,7 @@ fn load_icon(path: &std::path::Path) -> tray_icon::icon::Icon {
 
 fn main() {
     let event_loop = EventLoop::new();
-    
+
     let quit_item = MenuItem::new("Quit", true, None);
     let quit_id = quit_item.id();
     let tray_menu = Menu::with_items(&[&quit_item]);
@@ -590,7 +590,7 @@ fn main() {
             .with_tooltip(env!("CARGO_PKG_DESCRIPTION"))
             .with_icon(icon)
             .build()
-            .unwrap()
+            .unwrap(),
     );
 
     let (quit_tx, quit_rx) = watch::channel(());
@@ -603,7 +603,7 @@ fn main() {
 
     println!("starting event loop");
     event_loop.run(move |window_event, _, control_flow| {
-        *control_flow = ControlFlow::WaitUntil(Instant::now()+Duration::new(1, 0));
+        *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::new(1, 0));
         if join_handle.is_none() || join_handle.as_ref().unwrap().is_finished() {
             println!("bt thread is finished");
             tray_icon.take();
