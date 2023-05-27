@@ -14,8 +14,7 @@ use futures::stream::StreamExt;
 use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::io::Write;
-use tokio::sync::watch;
+use tokio::sync::{watch, oneshot};
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -482,6 +481,7 @@ async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
 async fn watch_device(
     peripheral: Peripheral,
     mut quit_rx: watch::Receiver<()>,
+    mut disconnect_rx: oneshot::Receiver<()>
 ) -> Result<(), btleplug::Error> {
     // find the characteristic we want
     let chars = peripheral.characteristics();
@@ -523,7 +523,10 @@ async fn watch_device(
     // Process while the BLE connection is not broken or stopped.
     loop {
         tokio::select! {
-            Ok(()) = quit_rx.changed() => {
+            _ = quit_rx.changed() => {
+                break;
+            },
+            _ = &mut disconnect_rx => {
                 break;
             },
             Some(data) = notification_stream.next() => {
@@ -588,29 +591,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("no suitable peripherals found");
         return Ok(());
     }
-    for (i, p) in peripherals.iter().enumerate() {
-        let local_name = match p.properties().await.unwrap().unwrap().local_name {
-            Some(name) => name,
-            None => p.address().to_string(),
-        };
-        println!("{}: {}", i, local_name);
-    }
-    let peripheral = if peripherals.len() == 1 {
-        peripherals.into_iter().next().unwrap()
-    } else {
-        print!("choose: ");
-        std::io::stdout().flush()?;
-        let mut line2 = String::new();
-        std::io::stdin().read_line(&mut line2)?;
-        peripherals
-            .into_iter()
-            .nth(line2.trim().parse::<usize>()?)
-            .unwrap()
-    };
     let (quit_tx, quit_rx) = watch::channel(());
-    let join_handle = tokio::spawn(watch_device(peripheral, quit_rx.clone()));
+    let mut tasks = tokio::task::JoinSet::new();
+    let mut disconnect_txs = Vec::with_capacity(peripherals.len());
+    for peripheral in peripherals.into_iter() {
+        let (disconnect_tx, disconnect_rx) = oneshot::channel();
+        disconnect_txs.push(disconnect_tx);
+        tasks.spawn(watch_device(peripheral, quit_rx.clone(), disconnect_rx));
+    }
     tokio::signal::ctrl_c().await?;
     quit_tx.send(())?;
-    join_handle.await??;
+    while let Some(res) = tasks.join_next().await {
+        res??;
+    }
     Ok(())
 }
