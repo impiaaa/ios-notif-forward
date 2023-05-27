@@ -13,7 +13,9 @@ use btleplug::api::{
 };
 use btleplug::platform::{Manager, Peripheral};
 use futures::stream::StreamExt;
-use notify_rust::{Hint, Notification, NotificationHandle, Timeout, Urgency};
+#[cfg(not(windows))]
+use notify_rust::NotificationHandle;
+use notify_rust::{Hint, Notification, Timeout, Urgency};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::time::{Duration, Instant};
@@ -21,6 +23,9 @@ use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tokio::sync::{oneshot, watch};
 use tray_icon::{menu::Menu, menu::MenuEvent, menu::MenuItem, TrayIconBuilder};
+
+#[cfg(windows)]
+type NotificationHandle = Notification;
 
 struct AppGlobals {
     peripheral: Peripheral,
@@ -254,6 +259,26 @@ fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 fn add_action_handlers(_app: &AppGlobals, _notif_id: u32, _notification_uid: u32) {}
 
+#[cfg(not(windows))]
+fn get_handle_id(handle: &NotificationHandle) -> u32 {
+    handle.id()
+}
+#[cfg(windows)]
+fn get_handle_id(_handle: &NotificationHandle) -> u32 {
+    0
+}
+
+#[cfg(not(windows))]
+fn show_notification(send: &Notification) -> notify_rust::error::Result<NotificationHandle> {
+    send.show()
+}
+#[cfg(windows)]
+fn show_notification(send: &Notification) -> notify_rust::error::Result<NotificationHandle> {
+    send.show()?;
+    // ok to error, will prevent being added to sent list
+    Err(notify_rust::error::ErrorKind::ImplementationMissing.into())
+}
+
 async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug::Error> {
     if let Some(command_byte) = value.first() {
         match CommandID::try_from(command_byte.clone()) {
@@ -270,8 +295,8 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                         update_handle(handle);
                     }
                     if let Some(send) = app.pending_notifs.remove(&recv.notification_uid) {
-                        if let Ok(handle) = send.show() {
-                            let notif_id = handle.id();
+                        if let Ok(handle) = show_notification(&send) {
+                            let notif_id = get_handle_id(&handle);
                             let notification_uid = recv.notification_uid;
                             app.sent_notifs.insert(notification_uid, handle);
                             add_action_handlers(app, notif_id, notification_uid);
@@ -650,6 +675,7 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
     let mut disconnect_txs = HashMap::new();
 
     let mut events = central.events().await?;
+    //central.start_scan(btleplug::api::ScanFilter{services:vec![ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID]}).await?;
     loop {
         tokio::select! {
             _ = quit_rx.changed() => {
@@ -658,7 +684,7 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
             Some(event) = events.next() => {
                 match event {
                     CentralEvent::DeviceConnected(id) => {
-                        println!("new device connected: {:?}", &id);
+                        println!("DeviceConnected: {:?}", &id);
                         let peripheral = central.peripheral(&id).await?;
                         peripheral.discover_services().await?;
                         if peripheral.services().iter().any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID) {
@@ -666,13 +692,24 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
                             disconnect_txs.insert(id.clone(), disconnect_tx);
                             tasks.spawn(watch_device(peripheral, quit_rx.clone(), disconnect_rx));
                         }
-                    },
+                    }
                     CentralEvent::DeviceDisconnected(id) => {
-                        println!("device disconnected: {:?}", &id);
+                        println!("DeviceDisconnected: {:?}", &id);
                         if let Some(disconnect_tx) = disconnect_txs.remove(&id) {
                             disconnect_tx.send(()).unwrap();
                         }
-                    },
+                    }
+                    CentralEvent::DeviceDiscovered(id) => {
+                        println!("DeviceDiscovered: {:?}", &id);
+                    }
+                    CentralEvent::ServicesAdvertisement { id, services } => {
+                        println!("ServicesAdvertisement: {:?} {}", &id, services.len());
+                        if services.iter().any(|s| *s == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID) {
+                            println!("attempting to connect");
+                            let peripheral = central.peripheral(&id).await?;
+                            peripheral.connect().await?;
+                        }
+                    }
                     _ => {}
                 }
             },
