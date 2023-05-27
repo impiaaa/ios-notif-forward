@@ -1,3 +1,1 @@
-* text=auto
-*.toml text
-Cargo.lock text
+* text=auto eol=lf
