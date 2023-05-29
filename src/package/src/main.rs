@@ -1,12 +1,9 @@
-use async_trait::async_trait;
-use async_zip::error::ZipError;
 use async_zip::tokio::write::ZipFileWriter;
 use async_zip::{AttributeCompatibility, Compression, ZipEntryBuilder};
 use clap::{arg, command, value_parser};
 use derive_more::From;
 use iconwriter::{icns, Icon, IconError, Image};
 use std::path::{Path, PathBuf};
-use std::process::Output;
 use std::str::FromStr;
 use tokio::fs;
 use tokio::io;
@@ -50,33 +47,18 @@ X-GNOME-UsesNotifications=true"
 
 #[derive(Debug, From)]
 enum Error {
-    CommandExit(&'static str, Output),
     Io(io::Error),
-    Zip(ZipError),
+    Zip(async_zip::error::ZipError),
     Icns(IconError<icns::Key>),
+    Toml(toml::de::Error),
+    Triple(target_spec::errors::TripleParseError),
+    TargetSpec(target_spec::Error),
 }
 
 #[cfg(windows)]
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
-    }
-}
-
-#[async_trait]
-trait CommandOutputExt {
-    async fn check(&mut self, name: &'static str) -> Result<Output, Error>;
-}
-
-#[async_trait]
-impl CommandOutputExt for Command {
-    async fn check(&mut self, name: &'static str) -> Result<Output, Error> {
-        let output = self.output().await?;
-        if output.status.success() {
-            Ok(output)
-        } else {
-            Err(Error::CommandExit(name, output))
-        }
     }
 }
 
@@ -125,13 +107,13 @@ async fn main() -> Result<(), Error> {
     println!("Using target triple {target}");
 
     // ensure a valid target triple
-    let _ = target_spec::Triple::from_str(target).expect("Malformed target triple");
+    let _ = target_spec::Triple::from_str(target)?;
 
     // parse out project toml
     let mut manifile = fs::File::open(&manifest_path).await?;
     let mut manidata = String::new();
     manifile.read_to_string(&mut manidata).await?;
-    let manifest = manidata.parse::<toml::Table>().unwrap();
+    let manifest = manidata.parse::<toml::Table>()?;
     let pkg_info = &manifest["package"];
     let pkg_name = pkg_info["name"].as_str().expect("Package has no name");
     let pkg_version = pkg_info["version"]
@@ -147,7 +129,8 @@ async fn main() -> Result<(), Error> {
             &manifest_path.to_str().unwrap()
         ))
         .arg(format!("--target={target}"))
-        .check("cargo")
+        .spawn()?
+        .wait()
         .await?;
 
     let zipname = format!("{pkg_name}-{pkg_version}-{target}.zip");
@@ -155,10 +138,7 @@ async fn main() -> Result<(), Error> {
     let mut zipfile = fs::File::create(zipname).await?;
     let mut zipwriter = ZipFileWriter::with_tokio(&mut zipfile);
 
-    if target_spec::eval("cfg(target_os = \"macos\")", target)
-        .unwrap()
-        .unwrap()
-    {
+    if target_spec::eval("cfg(target_os = \"macos\")", target)?.unwrap() {
         let mut exefile = fs::File::open(
             manifest_dir
                 .join("target")
@@ -214,7 +194,7 @@ async fn main() -> Result<(), Error> {
                 format!(INFO_PLIST_FMT!(), pkg_name, pkg_name, pkg_version).as_bytes(),
             )
             .await?;
-    } else if target_spec::eval("cfg(windows)", target).unwrap().unwrap() {
+    } else if target_spec::eval("cfg(windows)", target)?.unwrap() {
         let exename = format!("{pkg_name}.exe");
         let mut exefile = fs::File::open(
             manifest_dir
@@ -229,7 +209,7 @@ async fn main() -> Result<(), Error> {
 
         let exeentry = ZipEntryBuilder::new(exename.into(), Compression::Deflate).build();
         zipwriter.write_entry_whole(exeentry, &exedata).await?;
-    } else if target_spec::eval("cfg(unix)", target).unwrap().unwrap() {
+    } else if target_spec::eval("cfg(unix)", target)?.unwrap() {
         let mut exefile = fs::File::open(
             manifest_dir
                 .join("target")
