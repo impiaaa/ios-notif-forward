@@ -53,8 +53,8 @@ async fn write_details_request(
     );
     let req = GetNotificationAttributesRequest {
         command_id: CommandID::GetNotificationAttributes,
-        notification_uid: notification_uid,
-        attribute_ids: attribute_ids,
+        notification_uid,
+        attribute_ids,
     };
     let out: Vec<u8> = req.into();
     app.peripheral
@@ -75,7 +75,7 @@ async fn write_appinfo_request(
     let req = GetAppAttributesRequest {
         command_id: CommandID::GetAppAttributes,
         app_identifier: app_identifier.clone(),
-        attribute_ids: attribute_ids,
+        attribute_ids,
     };
     let out: Vec<u8> = req.into();
     app.peripheral
@@ -111,7 +111,7 @@ async fn update_notif_with_notif_attributes(
     notification_uid: u32,
     attribute_list: &Vec<NotificationAttribute>,
 ) -> Result<(), btleplug::Error> {
-    let mut send = if app.pending_notifs.contains_key(&notification_uid) {
+    let send = if app.pending_notifs.contains_key(&notification_uid) {
         app.pending_notifs.get_mut(&notification_uid).unwrap()
     } else if app.sent_notifs.contains_key(&notification_uid) {
         app.sent_notifs.get_mut(&notification_uid).unwrap()
@@ -122,11 +122,11 @@ async fn update_notif_with_notif_attributes(
         match attr.id {
             NotificationAttributeID::AppIdentifier => {
                 if let Some(appid) = &attr.value {
-                    set_app_id(&mut send, &appid);
+                    set_app_id(send, appid);
                     if cfg!(all(unix, not(target_os = "macos"))) {
                         // only XDG will use the application name
                         if let Some(appname) = app.app_names.get(appid) {
-                            send.appname(&appname);
+                            send.appname(appname);
                         } else {
                             if !app.needs_appname.contains_key(appid) {
                                 app.needs_appname.insert(appid.clone(), HashSet::new());
@@ -141,17 +141,17 @@ async fn update_notif_with_notif_attributes(
             }
             NotificationAttributeID::Title => {
                 if let Some(title) = &attr.value {
-                    send.summary(&title);
+                    send.summary(title);
                 }
             }
             NotificationAttributeID::Subtitle => {
                 if let Some(subtitle) = &attr.value {
-                    send.subtitle(&subtitle);
+                    send.subtitle(subtitle);
                 }
             }
             NotificationAttributeID::Message => {
                 if let Some(message) = &attr.value {
-                    send.body(&message);
+                    send.body(message);
                 }
             }
             NotificationAttributeID::MessageSize => {}
@@ -163,7 +163,7 @@ async fn update_notif_with_notif_attributes(
                             app.received_notifs.get(&notification_uid),
                             ActionID::Positive,
                         ),
-                        &label,
+                        label,
                     );
                 }
             }
@@ -174,26 +174,23 @@ async fn update_notif_with_notif_attributes(
                             app.received_notifs.get(&notification_uid),
                             ActionID::Negative,
                         ),
-                        &label,
+                        label,
                     );
                 }
             }
         }
     }
-    for attr in attribute_list {
-        match attr.id {
-            NotificationAttributeID::AppIdentifier => {
-                if cfg!(all(unix, not(target_os = "macos"))) {
-                    // only XDG will use the application name
-                    if let Some(appid) = &attr.value {
-                        if !app.app_names.contains_key(appid) {
-                            write_appinfo_request(app, appid, vec![AppAttributeID::DisplayName])
-                                .await?;
-                        }
+    if cfg!(all(unix, not(target_os = "macos"))) {
+        for attr in attribute_list {
+            if attr.id == NotificationAttributeID::AppIdentifier {
+                // only XDG will use the application name
+                if let Some(appid) = &attr.value {
+                    if !app.app_names.contains_key(appid) {
+                        write_appinfo_request(app, appid, vec![AppAttributeID::DisplayName])
+                            .await?;
                     }
                 }
             }
-            _ => {}
         }
     }
     Ok(())
@@ -284,7 +281,7 @@ fn show_notification(send: &Notification) -> notify_rust::error::Result<Notifica
 
 async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug::Error> {
     if let Some(command_byte) = value.first() {
-        match CommandID::try_from(command_byte.clone()) {
+        match CommandID::try_from(*command_byte) {
             Ok(CommandID::GetNotificationAttributes) => {
                 if let Ok((_, recv)) = GetNotificationAttributesResponse::parse(&value) {
                     println!("{:?}", recv);
@@ -325,12 +322,12 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
                                                 if let Some(send) =
                                                     app.pending_notifs.get_mut(&notification_uid)
                                                 {
-                                                    send.appname(&appname);
+                                                    send.appname(appname);
                                                 }
                                                 if let Some(handle) =
                                                     app.sent_notifs.get_mut(&notification_uid)
                                                 {
-                                                    handle.appname(&appname);
+                                                    handle.appname(appname);
                                                     update_handle(handle);
                                                 }
                                             }
@@ -386,7 +383,7 @@ async fn set_notif_from_gatt(
     notification_uid: u32,
 ) -> Result<(), btleplug::Error> {
     let recv = app.received_notifs.get(&notification_uid).unwrap();
-    let mut send = if app.pending_notifs.contains_key(&notification_uid) {
+    let send = if app.pending_notifs.contains_key(&notification_uid) {
         app.pending_notifs.get_mut(&notification_uid).unwrap()
     } else if app.sent_notifs.contains_key(&notification_uid) {
         app.sent_notifs.get_mut(&notification_uid).unwrap()
@@ -394,15 +391,15 @@ async fn set_notif_from_gatt(
         return Ok(());
     };
     if recv.event_flags.contains(EventFlag::Silent) {
-        add_hint(&mut send, Hint::SuppressSound(true));
+        add_hint(send, Hint::SuppressSound(true));
     }
     if recv.event_flags.contains(EventFlag::Important) {
-        set_urgency(&mut send, Urgency::Critical);
+        set_urgency(send, Urgency::Critical);
         send.timeout(Timeout::Never);
     }
     if recv.category_id != CategoryID::Other {
         add_hint(
-            &mut send,
+            send,
             Hint::Category(
                 match recv.category_id {
                     CategoryID::IncomingCall => "x-apple.call.incoming",
@@ -460,15 +457,13 @@ async fn set_notif_from_gatt(
             // macOS and Windows will use the body message, on XDG it is dependent on server capabilities
             attrs.push((NotificationAttributeID::Message, Some(u16::MAX)));
         }
-        if cfg!(all(unix, not(target_os = "macos"))) {
-            if has_capability("actions") {
-                // only XDG will use action labels, and only if server supports it
-                if recv.event_flags.contains(EventFlag::PositiveAction) {
-                    attrs.push((NotificationAttributeID::PositiveActionLabel, None));
-                }
-                if recv.event_flags.contains(EventFlag::NegativeAction) {
-                    attrs.push((NotificationAttributeID::NegativeActionLabel, None));
-                }
+        if cfg!(all(unix, not(target_os = "macos"))) && has_capability("actions") {
+            // only XDG will use action labels, and only if server supports it
+            if recv.event_flags.contains(EventFlag::PositiveAction) {
+                attrs.push((NotificationAttributeID::PositiveActionLabel, None));
+            }
+            if recv.event_flags.contains(EventFlag::NegativeAction) {
+                attrs.push((NotificationAttributeID::NegativeActionLabel, None));
             }
         }
         write_details_request(app, recv.notification_uid, attrs).await?;
@@ -542,10 +537,10 @@ async fn watch_device(
         .find(|c| c.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID);
 
     println!("subscribing to NS {:?}", ns_char);
-    peripheral.subscribe(&ns_char).await?;
+    peripheral.subscribe(ns_char).await?;
     if let Some(ds_char_ok) = ds_char {
         println!("subscribing to DS {:?}", ds_char_ok);
-        peripheral.subscribe(&ds_char_ok).await?;
+        peripheral.subscribe(ds_char_ok).await?;
     }
 
     let mut notification_stream = peripheral.notifications().await?;
@@ -602,7 +597,13 @@ async fn watch_device(
 
 fn load_icon() -> tray_icon::icon::Icon {
     let (icon_rgba, icon_width, icon_height) = {
-        let image = image::io::Reader::with_format(std::io::Cursor::new(include_bytes!("../icon-32-white.png")), image::ImageFormat::Png).decode().unwrap().into_rgba8();
+        let image = image::io::Reader::with_format(
+            std::io::Cursor::new(include_bytes!("../icon-32-white.png")),
+            image::ImageFormat::Png,
+        )
+        .decode()
+        .unwrap()
+        .into_rgba8();
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();
         (rgba, width, height)
@@ -660,18 +661,16 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
         }
-        match window_event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                println!("close requested");
-                quit_tx.send(()).unwrap();
-                join_handle.take().unwrap().join().unwrap();
-                tray_icon.take();
-                *control_flow = ControlFlow::Exit;
-            }
-            _ => (),
+        if let Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } = window_event
+        {
+            println!("close requested");
+            quit_tx.send(()).unwrap();
+            join_handle.take().unwrap().join().unwrap();
+            tray_icon.take();
+            *control_flow = ControlFlow::Exit;
         }
     });
 }
@@ -681,7 +680,7 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
 
     // get the first bluetooth adapter
     let adapters = manager.adapters().await?;
-    if adapters.len() == 0 {
+    if adapters.is_empty() {
         println!("no adapters found");
         return Ok(());
     }
