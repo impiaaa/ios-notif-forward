@@ -237,7 +237,7 @@ fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
                         );
                         let req = PerformNotificationActionRequest {
                             command_id: CommandID::PerformNotificationAction,
-                            notification_uid: notification_uid,
+                            notification_uid,
                             action_id: if action == &pos_action_id {
                                 ActionID::Positive
                             } else {
@@ -287,7 +287,7 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
         match CommandID::try_from(*command_byte) {
             Ok(CommandID::GetNotificationAttributes) => {
                 if let Ok((_, recv)) = GetNotificationAttributesResponse::parse(&value) {
-                    println!("{:?}", recv);
+                    println!("{recv:?}");
                     update_notif_with_notif_attributes(
                         app,
                         recv.notification_uid,
@@ -309,7 +309,7 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
             }
             Ok(CommandID::GetAppAttributes) => {
                 if let Ok((_, recv)) = GetAppAttributesResponse::parse(&value) {
-                    println!("{:?}", recv);
+                    println!("{recv:?}");
                     for attr in &recv.attribute_list {
                         match attr.id {
                             AppAttributeID::DisplayName => {
@@ -484,7 +484,7 @@ fn close_handle(_handle: NotificationHandle) {}
 
 async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug::Error> {
     if let Ok((_, recv)) = GattNotification::parse(&value) {
-        println!("{:?}", recv);
+        println!("{recv:?}");
         match recv.event_id {
             EventID::NotificationAdded => {
                 let mut send = Notification::new();
@@ -539,10 +539,10 @@ async fn watch_device(
         .iter()
         .find(|c| c.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID);
 
-    println!("subscribing to NS {:?}", ns_char);
+    println!("subscribing to NS {ns_char:?}");
     peripheral.subscribe(ns_char).await?;
     if let Some(ds_char_ok) = ds_char {
-        println!("subscribing to DS {:?}", ds_char_ok);
+        println!("subscribing to DS {ds_char_ok:?}");
         peripheral.subscribe(ds_char_ok).await?;
     }
 
@@ -589,11 +589,11 @@ async fn watch_device(
     println!("unsubscribing");
     if let Some(ds_char_ok) = app.ds_char {
         if let Err(e) = app.peripheral.unsubscribe(&ds_char_ok).await {
-            eprintln!("error unsubscribing from DS: {:?}", e);
+            eprintln!("error unsubscribing from DS: {e:?}");
         }
     }
     if let Err(e) = app.peripheral.unsubscribe(&app.ns_char).await {
-        eprintln!("error unsubscribing from NS: {:?}", e);
+        eprintln!("error unsubscribing from NS: {e:?}");
     }
     Ok(())
 }
@@ -656,7 +656,7 @@ fn main() {
             *control_flow = ControlFlow::Exit;
         }
         if let Ok(menu_event) = menu_channel.try_recv() {
-            println!("got menu event {:?}", menu_event);
+            println!("got menu event {menu_event:?}");
             if menu_event.id == quit_id {
                 quit_tx.send(()).unwrap();
                 join_handle.take().unwrap().join().unwrap();
