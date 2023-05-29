@@ -109,7 +109,7 @@ async fn main() -> Result<(), Error> {
         .get_one::<String>("target")
         .map(|v| v.as_str())
         .unwrap_or(env!("TARGET"));
-    println!("Using target triple {}", target);
+    println!("Using target triple {target}");
 
     // ensure a valid target triple
     let _ = target_spec::Triple::from_str(target).expect("Malformed target triple");
@@ -125,7 +125,7 @@ async fn main() -> Result<(), Error> {
         .as_str()
         .expect("Package has no version");
 
-    println!("Building {} version {}", pkg_name, pkg_version);
+    println!("Building {pkg_name} version {pkg_version}");
     Command::new("cargo")
         .arg("build")
         .arg("--release")
@@ -133,26 +133,32 @@ async fn main() -> Result<(), Error> {
             "--manifest-path={}",
             &manifest_path.to_str().unwrap()
         ))
-        .arg(format!("--target={}", target))
+        .arg(format!("--target={target}"))
         .check("cargo")
         .await?;
 
-    println!("zipping");
-    let mut zipfile =
-        fs::File::create(format!("{}-{}-{}.zip", pkg_name, pkg_version, target)).await?;
+    let zipname = format!("{pkg_name}-{pkg_version}-{target}.zip");
+    println!("Zipping to {zipname}");
+    let mut zipfile = fs::File::create(zipname).await?;
     let mut zipwriter = ZipFileWriter::with_tokio(&mut zipfile);
 
     if target_spec::eval("cfg(target_os = \"macos\")", target)
         .unwrap()
         .unwrap()
     {
-        let mut exefile =
-            fs::File::open(manifest_dir.join("target/release/").join(pkg_name)).await?;
+        let mut exefile = fs::File::open(
+            manifest_dir
+                .join("target")
+                .join(target)
+                .join("release")
+                .join(pkg_name),
+        )
+        .await?;
         let mut exedata = Vec::new();
         exefile.read_to_end(&mut exedata).await?;
 
         let exeentry = ZipEntryBuilder::new(
-            format!("{}.app/Contents/MacOS/{}", pkg_name, pkg_name).into(),
+            format!("{pkg_name}.app/Contents/MacOS/{pkg_name}").into(),
             Compression::Deflate,
         )
         .attribute_compatibility(AttributeCompatibility::Unix)
@@ -178,14 +184,14 @@ async fn main() -> Result<(), Error> {
         icon.write(&mut icondata)?;
 
         let iconentry = ZipEntryBuilder::new(
-            format!("{}.app/Contents/Resources/Icon.icns", pkg_name).into(),
+            format!("{pkg_name}.app/Contents/Resources/Icon.icns").into(),
             Compression::Deflate,
         )
         .build();
         zipwriter.write_entry_whole(iconentry, &icondata).await?;
 
         let infoentry = ZipEntryBuilder::new(
-            format!("{}.app/Contents/Resources/Info.plist", pkg_name).into(),
+            format!("{pkg_name}.app/Contents/Resources/Info.plist").into(),
             Compression::Deflate,
         )
         .build();
@@ -196,25 +202,36 @@ async fn main() -> Result<(), Error> {
             )
             .await?;
     } else if target_spec::eval("cfg(windows)", target).unwrap().unwrap() {
-        let exename = format!("{}.exe", pkg_name);
-        let mut exefile =
-            fs::File::open(manifest_dir.join("target/release/").join(&exename)).await?;
+        let exename = format!("{pkg_name}.exe");
+        let mut exefile = fs::File::open(
+            manifest_dir
+                .join("target")
+                .join(target)
+                .join("release")
+                .join(&exename),
+        )
+        .await?;
         let mut exedata = Vec::new();
         exefile.read_to_end(&mut exedata).await?;
 
         let exeentry = ZipEntryBuilder::new(exename.into(), Compression::Deflate).build();
         zipwriter.write_entry_whole(exeentry, &exedata).await?;
     } else if target_spec::eval("cfg(unix)", target).unwrap().unwrap() {
-        let mut exefile =
-            fs::File::open(manifest_dir.join("target/release/").join(pkg_name)).await?;
+        let mut exefile = fs::File::open(
+            manifest_dir
+                .join("target")
+                .join(target)
+                .join("release")
+                .join(pkg_name),
+        )
+        .await?;
         let mut exedata = Vec::new();
         exefile.read_to_end(&mut exedata).await?;
 
-        let exeentry =
-            ZipEntryBuilder::new(format!("bin/{}", pkg_name).into(), Compression::Deflate)
-                .attribute_compatibility(AttributeCompatibility::Unix)
-                .unix_permissions(0o755)
-                .build();
+        let exeentry = ZipEntryBuilder::new(format!("bin/{pkg_name}").into(), Compression::Deflate)
+            .attribute_compatibility(AttributeCompatibility::Unix)
+            .unix_permissions(0o755)
+            .build();
         zipwriter.write_entry_whole(exeentry, &exedata).await?;
 
         let mut iconfile = fs::File::open(manifest_dir.join("icon.svg")).await?;
@@ -222,7 +239,7 @@ async fn main() -> Result<(), Error> {
         iconfile.read_to_end(&mut icondata).await?;
 
         let iconentry = ZipEntryBuilder::new(
-            format!("share/icons/hicolor/scalable/apps/{}.svg", pkg_name).into(),
+            format!("share/icons/hicolor/scalable/apps/{pkg_name}.svg").into(),
             Compression::Deflate,
         )
         .build();
