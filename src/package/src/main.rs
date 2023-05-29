@@ -14,6 +14,8 @@ macro_rules! INFO_PLIST_FMT { () => { "<?xml version=\"1.0\" encoding=\"UTF-8\"?
 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
 <plist version=\"1.0\">
 <dict>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Connecting to your device and receive its notifications</string>
     <key>CFBundleExecutable</key>
@@ -27,10 +29,11 @@ macro_rules! INFO_PLIST_FMT { () => { "<?xml version=\"1.0\" encoding=\"UTF-8\"?
     <key>CFBundleVersion</key>
     <string>{}</string>
     <key>LSUIElement</key>
-    <true />
+    <true/>
     <key>LSMinimumSystemVersion</key>
-    <string>10.8.0</string>
-</dict>" }; }
+    <string>10.15.0</string>
+</dict>
+</plist>" }; }
 
 macro_rules! DESKTOP_ENTRY_FMT {
     () => {
@@ -184,7 +187,7 @@ async fn main() -> Result<(), Error> {
         zipwriter.write_entry_whole(iconentry, &icondata).await?;
 
         let infoentry = ZipEntryBuilder::new(
-            format!("{pkg_name}.app/Contents/Resources/Info.plist").into(),
+            format!("{pkg_name}.app/Contents/Info.plist").into(),
             Compression::Deflate,
         )
         .build();
