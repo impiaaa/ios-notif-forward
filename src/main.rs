@@ -27,6 +27,7 @@ use tokio::sync::{oneshot, watch};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::TrayIconBuilder;
 
+// Windows does not have notification handles
 #[cfg(windows)]
 type NotificationHandle = Notification;
 
@@ -181,9 +182,9 @@ async fn update_notif_with_notif_attributes(
         }
     }
     if cfg!(all(unix, not(target_os = "macos"))) {
+        // only XDG will use the application name
         for attr in attribute_list {
             if attr.id == NotificationAttributeID::AppIdentifier {
-                // only XDG will use the application name
                 if let Some(appid) = &attr.value {
                     if !app.app_names.contains_key(appid) {
                         write_appinfo_request(app, appid, vec![AppAttributeID::DisplayName])
@@ -259,15 +260,17 @@ fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
 #[cfg(not(all(unix, not(target_os = "macos"))))]
 fn add_action_handlers(_app: &AppGlobals, _notif_id: u32, _notification_uid: u32) {}
 
-#[cfg(not(windows))]
+// only XDG can get a handle's ID
+#[cfg(all(unix, not(target_os = "macos")))]
 fn get_handle_id(handle: &NotificationHandle) -> u32 {
     handle.id()
 }
-#[cfg(windows)]
+#[cfg(not(all(unix, not(target_os = "macos"))))]
 fn get_handle_id(_handle: &NotificationHandle) -> u32 {
     0
 }
 
+// Windows does not have notification handles
 #[cfg(not(windows))]
 fn show_notification(send: &Notification) -> notify_rust::error::Result<NotificationHandle> {
     send.show()
