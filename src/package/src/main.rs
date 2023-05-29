@@ -18,7 +18,7 @@ macro_rules! INFO_PLIST_FMT { () => { "<?xml version=\"1.0\" encoding=\"UTF-8\"?
 <plist version=\"1.0\">
 <dict>
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Connecting to your device and receiving its notifications</string>
+    <string>Connecting to your device and receive its notifications</string>
     <key>CFBundleExecutable</key>
     <string>{}</string>
     <key>CFBundleIconFile</key>
@@ -34,6 +34,19 @@ macro_rules! INFO_PLIST_FMT { () => { "<?xml version=\"1.0\" encoding=\"UTF-8\"?
     <key>LSMinimumSystemVersion</key>
     <string>10.8.0</string>
 </dict>" }; }
+
+macro_rules! DESKTOP_ENTRY_FMT {
+    () => {
+        "[Desktop Entry]
+Type=Application
+Version={}
+Name={}
+Icon={}
+Exec={}
+Terminal=false
+X-GNOME-UsesNotifications=true"
+    };
+}
 
 #[derive(Debug, From)]
 enum Error {
@@ -244,6 +257,22 @@ async fn main() -> Result<(), Error> {
         )
         .build();
         zipwriter.write_entry_whole(iconentry, &icondata).await?;
+
+        let desktopentry = ZipEntryBuilder::new(
+            format!("share/applications/{pkg_name}.desktop").into(),
+            Compression::Deflate,
+        )
+        .build();
+        zipwriter
+            .write_entry_whole(
+                desktopentry,
+                format!(
+                    DESKTOP_ENTRY_FMT!(),
+                    pkg_version, pkg_name, pkg_name, pkg_name
+                )
+                .as_bytes(),
+            )
+            .await?;
     }
 
     zipwriter.close().await?;
