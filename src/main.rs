@@ -28,8 +28,6 @@ use tray_icon::TrayIconBuilder;
 #[cfg(windows)]
 type NotificationHandle = Notification;
 
-const ICON_PATH: &str = "icon-32-white.png";
-
 struct AppGlobals {
     peripheral: Peripheral,
     received_notifs: HashMap<u32, GattNotification>,
@@ -600,11 +598,9 @@ async fn watch_device(
     Ok(())
 }
 
-fn load_icon(path: &std::path::Path) -> tray_icon::icon::Icon {
+fn load_icon() -> tray_icon::icon::Icon {
     let (icon_rgba, icon_width, icon_height) = {
-        let image = image::open(path)
-            .expect("Failed to open icon path")
-            .into_rgba8();
+        let image = image::io::Reader::with_format(std::io::Cursor::new(include_bytes!("../icon-32-white.png")), image::ImageFormat::Png).decode().unwrap().into_rgba8();
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();
         (rgba, width, height)
@@ -626,7 +622,7 @@ fn main() {
         &PredefinedMenuItem::separator(),
         &quit_item,
     ]);
-    let icon_tray = load_icon(std::path::Path::new(ICON_PATH));
+    let icon_tray = load_icon();
     let mut tray_icon = Some(
         TrayIconBuilder::new()
             .with_menu(Box::new(tray_menu))
