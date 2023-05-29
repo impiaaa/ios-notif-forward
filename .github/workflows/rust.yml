@@ -17,8 +17,13 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v3
-    - name: Setup
+    - name: Install toolchain
       run: rustup toolchain install stable --profile minimal
+    - name: Install dependencies
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        sudo apt update
+        sudo apt install libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
     - uses: Swatinem/rust-cache@v2
     - name: Build
       run: cargo build --verbose
