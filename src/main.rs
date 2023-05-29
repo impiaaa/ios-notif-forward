@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use ancs::attributes::action::ActionID;
 use ancs::attributes::app::AppAttributeID;
 use ancs::attributes::category::CategoryID;
