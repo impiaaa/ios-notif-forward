@@ -83,7 +83,13 @@ impl IoResultExt for io::Result<()> {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let matches = command!()
-        .arg(clap::Arg::new("manifest-path").long("manifest-path").value_name("FILE").required(false).value_parser(value_parser!(PathBuf)))
+        .arg(
+            clap::Arg::new("manifest-path")
+                .long("manifest-path")
+                .value_name("FILE")
+                .required(false)
+                .value_parser(value_parser!(PathBuf)),
+        )
         .arg(arg!(--target <TRIPLE>).required(false))
         .get_matches();
 
@@ -99,7 +105,10 @@ async fn main() -> Result<(), Error> {
     };
     println!("Using manifest at {:?}", &manifest_path);
 
-    let target = matches.get_one::<String>("target").map(|v| v.as_str()).unwrap_or(env!("TARGET"));
+    let target = matches
+        .get_one::<String>("target")
+        .map(|v| v.as_str())
+        .unwrap_or(env!("TARGET"));
     println!("Using target triple {}", target);
 
     // ensure a valid target triple
@@ -112,22 +121,31 @@ async fn main() -> Result<(), Error> {
     let manifest = manidata.parse::<toml::Table>().unwrap();
     let pkg_info = &manifest["package"];
     let pkg_name = pkg_info["name"].as_str().expect("Package has no name");
-    let pkg_version = pkg_info["version"].as_str().expect("Package has no version");
+    let pkg_version = pkg_info["version"]
+        .as_str()
+        .expect("Package has no version");
 
     println!("Building {} version {}", pkg_name, pkg_version);
     Command::new("cargo")
         .arg("build")
         .arg("--release")
-        .arg(format!("--manifest-path={}", &manifest_path.to_str().unwrap()))
+        .arg(format!(
+            "--manifest-path={}",
+            &manifest_path.to_str().unwrap()
+        ))
         .arg(format!("--target={}", target))
         .check("cargo")
         .await?;
 
     println!("zipping");
-    let mut zipfile = fs::File::create(format!("{}-{}-{}.zip", pkg_name, pkg_version, target)).await?;
+    let mut zipfile =
+        fs::File::create(format!("{}-{}-{}.zip", pkg_name, pkg_version, target)).await?;
     let mut zipwriter = ZipFileWriter::with_tokio(&mut zipfile);
 
-    if target_spec::eval("cfg(target_os = \"macos\")", target).unwrap().unwrap() {
+    if target_spec::eval("cfg(target_os = \"macos\")", target)
+        .unwrap()
+        .unwrap()
+    {
         let mut exefile =
             fs::File::open(manifest_dir.join("target/release/").join(pkg_name)).await?;
         let mut exedata = Vec::new();
@@ -192,10 +210,11 @@ async fn main() -> Result<(), Error> {
         let mut exedata = Vec::new();
         exefile.read_to_end(&mut exedata).await?;
 
-        let exeentry = ZipEntryBuilder::new(format!("bin/{}", pkg_name).into(), Compression::Deflate)
-            .attribute_compatibility(AttributeCompatibility::Unix)
-            .unix_permissions(0o755)
-            .build();
+        let exeentry =
+            ZipEntryBuilder::new(format!("bin/{}", pkg_name).into(), Compression::Deflate)
+                .attribute_compatibility(AttributeCompatibility::Unix)
+                .unix_permissions(0o755)
+                .build();
         zipwriter.write_entry_whole(exeentry, &exedata).await?;
 
         let mut iconfile = fs::File::open(manifest_dir.join("icon.svg")).await?;
