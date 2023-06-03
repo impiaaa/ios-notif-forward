@@ -12,7 +12,7 @@ Forward notifications from Apple devices to your desktop over Bluetooth, with a 
 
 ### Debian/Ubuntu
 
-`sudo apt install libgtk-3-dev libxdo-dev libayatana-appindicator3-dev # or libappindicator3-dev`
+`sudo apt install libgtk-3 libxdo libayatana-appindicator3 # or libappindicator3`
 
 ## Installation
 
@@ -21,3 +21,10 @@ The app should run fine from wherever. However, on Linux or other Unix, I recomm
 ## Running
 
 This requires a computer with Bluetooth LE capability. Pair your phone as normal for your system. The app will automatically start receiving notifications from any compatible device that connects to the computer. I've had the best luck when initiating the connection from the phone rather than from the computer. You will need to grant permission for your computer to receive system notifications the first time using the app. I haven't been able to succesfully test on Windows or Mac. To close the app and stop receiving notifications, choose "Quit" from the app's tray menu.
+
+## Compile from Source
+
+1. Clone the repository.
+2. Install the "rust" package from your system's package manager.
+3. Install the development packages for the dependencies if necessary.
+4. Run `cargo run` to run a debug build. Run `cd src/package` and then `cargo run` to generate a release package.
