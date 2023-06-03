@@ -48,10 +48,6 @@ async fn write_details_request(
     notification_uid: u32,
     attribute_ids: Vec<(NotificationAttributeID, Option<u16>)>,
 ) -> Result<(), btleplug::Error> {
-    println!(
-        "writing details request for notification {} attributes {:?}",
-        &notification_uid, &attribute_ids
-    );
     let req = GetNotificationAttributesRequest {
         command_id: CommandID::GetNotificationAttributes,
         notification_uid,
@@ -66,16 +62,12 @@ async fn write_details_request(
 
 async fn write_appinfo_request(
     app: &mut AppGlobals,
-    app_identifier: &String,
+    app_identifier: &str,
     attribute_ids: Vec<AppAttributeID>,
 ) -> Result<(), btleplug::Error> {
-    println!(
-        "writing appinfo request for application {} attributes {:?}",
-        &app_identifier, &attribute_ids
-    );
     let req = GetAppAttributesRequest {
         command_id: CommandID::GetAppAttributes,
-        app_identifier: app_identifier.clone(),
+        app_identifier: app_identifier.to_owned(),
         attribute_ids,
     };
     let out: Vec<u8> = req.into();
@@ -231,10 +223,6 @@ fn add_action_handlers(app: &AppGlobals, notif_id: u32, notification_uid: u32) {
             notify_rust::handle_action(notif_id, |result| {
                 if let notify_rust::ActionResponse::Custom(action) = result {
                     if action == &pos_action_id || action == &neg_action_id {
-                        println!(
-                            "performing {} action for notification {}",
-                            &action, &notification_uid
-                        );
                         let req = PerformNotificationActionRequest {
                             command_id: CommandID::PerformNotificationAction,
                             notification_uid,
@@ -287,7 +275,6 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
         match CommandID::try_from(*command_byte) {
             Ok(CommandID::GetNotificationAttributes) => {
                 if let Ok((_, recv)) = GetNotificationAttributesResponse::parse(&value) {
-                    println!("{recv:?}");
                     update_notif_with_notif_attributes(
                         app,
                         recv.notification_uid,
@@ -309,7 +296,6 @@ async fn handle_ds(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug:
             }
             Ok(CommandID::GetAppAttributes) => {
                 if let Ok((_, recv)) = GetAppAttributesResponse::parse(&value) {
-                    println!("{recv:?}");
                     for attr in &recv.attribute_list {
                         match attr.id {
                             AppAttributeID::DisplayName => {
@@ -484,7 +470,6 @@ fn close_handle(_handle: NotificationHandle) {}
 
 async fn handle_ns(app: &mut AppGlobals, value: Vec<u8>) -> Result<(), btleplug::Error> {
     if let Ok((_, recv)) = GattNotification::parse(&value) {
-        println!("{recv:?}");
         match recv.event_id {
             EventID::NotificationAdded => {
                 let mut send = Notification::new();
@@ -539,10 +524,10 @@ async fn watch_device(
         .iter()
         .find(|c| c.uuid == ancs::characteristics::data_source::DATA_SOURCE_UUID);
 
-    println!("subscribing to NS {ns_char:?}");
+    println!("subscribing to {ns_char:?} on {}", peripheral.address());
     peripheral.subscribe(ns_char).await?;
     if let Some(ds_char_ok) = ds_char {
-        println!("subscribing to DS {ds_char_ok:?}");
+        println!("subscribing to {ds_char_ok:?}");
         peripheral.subscribe(ds_char_ok).await?;
     }
 
@@ -559,8 +544,6 @@ async fn watch_device(
         cp_char: cp_char.cloned(),
         ds_char: ds_char.cloned(),
     };
-
-    println!("listening");
 
     // Process while the BLE connection is not broken or stopped.
     loop {
@@ -586,7 +569,6 @@ async fn watch_device(
         }
     }
 
-    println!("unsubscribing");
     if let Some(ds_char_ok) = app.ds_char {
         if let Err(e) = app.peripheral.unsubscribe(&ds_char_ok).await {
             eprintln!("error unsubscribing from DS: {e:?}");
@@ -647,16 +629,13 @@ fn main() {
 
     let menu_channel = MenuEvent::receiver();
 
-    println!("starting event loop");
     event_loop.run(move |window_event, _, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::new(1, 0));
         if join_handle.is_none() || join_handle.as_ref().unwrap().is_finished() {
-            println!("bt thread is finished");
             tray_icon.take();
             *control_flow = ControlFlow::Exit;
         }
         if let Ok(menu_event) = menu_channel.try_recv() {
-            println!("got menu event {menu_event:?}");
             if menu_event.id == quit_id {
                 quit_tx.send(()).unwrap();
                 join_handle.take().unwrap().join().unwrap();
@@ -669,7 +648,6 @@ fn main() {
             ..
         } = window_event
         {
-            println!("close requested");
             quit_tx.send(()).unwrap();
             join_handle.take().unwrap().join().unwrap();
             tray_icon.take();
@@ -694,7 +672,6 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
     let mut disconnect_txs = HashMap::new();
 
     let mut events = central.events().await?;
-    //central.start_scan(btleplug::api::ScanFilter{services:vec![ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID]}).await?;
     loop {
         tokio::select! {
             _ = quit_rx.changed() => {
@@ -703,7 +680,6 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
             Some(event) = events.next() => {
                 match event {
                     CentralEvent::DeviceConnected(id) => {
-                        println!("DeviceConnected: {:?}", &id);
                         let peripheral = central.peripheral(&id).await?;
                         peripheral.discover_services().await?;
                         if peripheral.services().iter().any(|s| s.uuid == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID) {
@@ -713,20 +689,8 @@ async fn inner_main(mut quit_rx: watch::Receiver<()>) -> Result<(), Box<dyn Erro
                         }
                     }
                     CentralEvent::DeviceDisconnected(id) => {
-                        println!("DeviceDisconnected: {:?}", &id);
                         if let Some(disconnect_tx) = disconnect_txs.remove(&id) {
                             disconnect_tx.send(()).unwrap();
-                        }
-                    }
-                    CentralEvent::DeviceDiscovered(id) => {
-                        println!("DeviceDiscovered: {:?}", &id);
-                    }
-                    CentralEvent::ServicesAdvertisement { id, services } => {
-                        println!("ServicesAdvertisement: {:?} {}", &id, services.len());
-                        if services.iter().any(|s| *s == ancs::APPLE_NOTIFICATION_CENTER_SERVICE_UUID) {
-                            println!("attempting to connect");
-                            let peripheral = central.peripheral(&id).await?;
-                            peripheral.connect().await?;
                         }
                     }
                     _ => {}
