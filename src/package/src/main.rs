@@ -241,6 +241,13 @@ async fn main() -> Result<(), Error> {
         .build();
         zipwriter.write_entry_whole(iconentry, &icondata).await?;
 
+        let iconentry = ZipEntryBuilder::new(
+            format!("share/icons/hicolor/symbolic/apps/{pkg_name}-symbolic.svg").into(),
+            Compression::Deflate,
+        )
+        .build();
+        zipwriter.write_entry_whole(iconentry, &icondata).await?;
+
         let desktopentry = ZipEntryBuilder::new(
             format!("share/applications/{pkg_name}.desktop").into(),
             Compression::Deflate,
