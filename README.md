@@ -1,6 +1,6 @@
 # ![icon](https://github.com/impiaaa/ios-notif-forward/assets/1307275/6607cb68-13b0-406d-95ed-2e4799943d24) ios-notif-forward
 
-Forward notifications from Apple devices to your desktop over Bluetooth, with a simple desktop tray app.
+Forward notifications from Apple mobile devices to your desktop over Bluetooth, with a simple desktop tray app.
 
 **[Download Here](https://github.com/impiaaa/ios-notif-forward/releases/latest)**
 
@@ -20,7 +20,14 @@ The app should run fine from wherever. However, on Linux or other Unix, I recomm
 
 ## Running
 
-This requires a computer with Bluetooth LE capability. Pair your phone as normal for your system. The app will automatically start receiving notifications from any compatible device that connects to the computer. I've had the best luck when initiating the connection from the phone rather than from the computer. You will need to grant permission for your computer to receive system notifications the first time using the app. I haven't been able to succesfully test on Windows or Mac. To close the app and stop receiving notifications, choose "Quit" from the app's tray menu.
+This requires a computer with Bluetooth LE capability.
+
+1. Pair your device over Bluetooth as normal for your system.
+2. The app will automatically start receiving notifications from any compatible device that connects to the computer.
+3. You will need to grant permission from your device for your computer to receive system notifications the first time you use the app.
+4. To close the app and stop receiving notifications, choose "Quit" from the app's tray menu.
+
+I've had the best luck when initiating the connection from the device rather than from the computer. I haven't been able to succesfully test on Windows or Mac.
 
 ## Compile from Source
 
