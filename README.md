@@ -1,6 +1,8 @@
-# ![icon](https://github.com/impiaaa/ios-notif-forward/assets/1307275/6607cb68-13b0-406d-95ed-2e4799943d24) ios-notif-forward
+# <picture><source media="(prefers-color-scheme: dark)" srcset="icon-32-white.png"><source media="(prefers-color-scheme: light)" srcset="icon-32-black.png"><img alt="icon" src="icon-32-black.png"></picture> ios-notif-forward
 
 Forward notifications from Apple mobile devices to your desktop over Bluetooth, with a simple desktop tray app.
+
+<a target="_blank" rel="noopener noreferrer" href="https://user-images.githubusercontent.com/1307275/243147241-449e2fb0-d1ba-4705-9059-676939a14ec7.jpeg"><img src="https://user-images.githubusercontent.com/1307275/243147241-449e2fb0-d1ba-4705-9059-676939a14ec7.jpeg" alt="Screenshot of iOS notification" style="max-width: 100%; width: 515px"></a> ![Screenshot of Gnome notification](https://github.com/impiaaa/ios-notif-forward/assets/1307275/28c55151-f506-4105-80cb-6775455e87e3)
 
 **[Download Here](https://github.com/impiaaa/ios-notif-forward/releases/latest)**
 
