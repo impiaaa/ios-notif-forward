@@ -1,14 +1,11 @@
-# This is a basic workflow that is manually triggered
-
-name: Release
-
-# Controls when the action will run.
-on: workflow_dispatch
+on:
+  push:
+    tags:
+      - "v*.*.*"
 
 env:
   CARGO_TERM_COLOR: always
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -34,10 +31,10 @@ jobs:
           src/package
           
     - name: Package
-      run: cargo run
+      run: cargo run --verbose
       working-directory: src/package
       
-    - uses: actions/upload-artifact@v3
+    - uses: softprops/action-gh-release@v1
       with:
-        path: src/package/*.zip
-        if-no-files-found: error
+        files: src/package/*.zip
+        fail_on_unmatched_files: true
