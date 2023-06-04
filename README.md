@@ -2,7 +2,7 @@
 
 Forward notifications from Apple devices to your desktop over Bluetooth, with a simple desktop tray app.
 
-**[Download Here](/impiaaa/ios-notif-forward/releases/latest)**
+**[Download Here](https://github.com/impiaaa/ios-notif-forward/releases/latest)**
 
 ## Additional Dependencies for Linux/Other Unix
 
