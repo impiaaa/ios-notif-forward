@@ -1,0 +1,43 @@
+# This is a basic workflow that is manually triggered
+
+name: Release
+
+# Controls when the action will run.
+on: workflow_dispatch
+
+env:
+  CARGO_TERM_COLOR: always
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install toolchain
+      run: rustup toolchain install stable --profile minimal
+      
+    - name: Install dependencies
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        sudo apt update
+        sudo apt install libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+        
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          .
+          src/package
+          
+    - name: Package
+      run: cargo run
+      working-directory: src/package
+      
+    - uses: actions/upload-artifact@v3
+      with:
+        path: src/package/*.zip
+        if-no-files-found: error
