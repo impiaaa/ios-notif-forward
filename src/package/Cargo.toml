@@ -9,6 +9,6 @@ iconwriter = "2.0.1"
 async-trait = "0.1.68"
 derive_more = "0.99.17"
 async_zip = { version = "0.0.15", features = ["tokio", "deflate"] }
-clap = { version = "4.3.0", features = ["cargo"] }
+clap = { version = "4.3.3", features = ["cargo"] }
 target-spec = "1.4.0"
 toml = "0.7.4"
