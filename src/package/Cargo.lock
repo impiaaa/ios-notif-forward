@@ -159,9 +159,9 @@ checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 
 [[package]]
 name = "cfg-expr"
-version = "0.15.1"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8790cf1286da485c72cf5fc7aeba308438800036ec67d89425924c4807268c9"
+checksum = "215c0072ecc28f92eeb0eea38ba63ddfcb65c2828c46311d646f1a3ff5f9841c"
 dependencies = [
  "smallvec",
  "target-lexicon",
@@ -1312,13 +1312,14 @@ checksum = "fd1ba337640d60c3e96bc6f0638a939b9c9a7f2c316a1598c279828b3d1dc8c5"
 
 [[package]]
 name = "target-spec"
-version = "1.4.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bf4306559bd50cb358e7af5692694d6f6fad95cf2c0bea2571dd419f5298e12"
+checksum = "9aba25be5b82a21b08cf544aa27804b3248e6f6eda913c362cad1aeef51ec89b"
 dependencies = [
  "cfg-expr",
  "guppy-workspace-hack",
  "target-lexicon",
+ "unicode-ident",
 ]
 
 [[package]]
