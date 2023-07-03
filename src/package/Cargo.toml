@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.28.1", features = ["full"] }
+tokio = { version = "1.29.1", features = ["full"] }
 iconwriter = "2.0.1"
 async-trait = "0.1.69"
 derive_more = "0.99.17"
