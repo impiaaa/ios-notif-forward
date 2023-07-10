@@ -3683,9 +3683,9 @@ dependencies = [
 
 [[package]]
 name = "xml-rs"
-version = "0.8.12"
+version = "0.8.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbe2542b5faf6bc09dfd0b0701df8571259776d459af399aa97f2a1e4ebc0de9"
+checksum = "5a56c84a8ccd4258aed21c92f70c0f6dea75356b6892ae27c24139da456f9336"
 
 [[package]]
 name = "xmlparser"
