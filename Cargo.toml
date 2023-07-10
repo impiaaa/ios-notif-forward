@@ -7,7 +7,7 @@ repository = "https://github.com/impiaaa/ios-notif-forward"
 
 [dependencies]
 ancs = { git = "https://github.com/impiaaa/ancs.git", rev = "b607e24" }
-btleplug = "0.10.5"
+btleplug = "0.11.0"
 futures = "0.3.28"
 image = { version = "0.24.6", features = ["png"] }
 notify-rust = "4.8.0"
