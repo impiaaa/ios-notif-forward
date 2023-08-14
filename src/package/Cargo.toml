@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.29.1", features = ["full"] }
+tokio = { version = "1.31.0", features = ["full"] }
 iconwriter = "2.0.1"
-async-trait = "0.1.72"
+async-trait = "0.1.73"
 derive_more = "0.99.17"
 async_zip = { version = "0.0.15", features = ["tokio", "deflate"] }
-clap = { version = "4.3.19", features = ["cargo"] }
+clap = { version = "4.3.21", features = ["cargo"] }
 target-spec = "3.0.1"
 toml = "0.7.6"
