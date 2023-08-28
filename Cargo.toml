@@ -10,7 +10,7 @@ ancs = { git = "https://github.com/impiaaa/ancs.git", rev = "b607e24" }
 btleplug = "0.11.0"
 futures = "0.3.28"
 image = { version = "0.24.7", features = ["png"] }
-notify-rust = "4.8.0"
+notify-rust = "4.9.0"
 tao = "0.22.2"
 tokio = { version = "1.32.0", features = ["full"] }
 tray-icon = "0.6.0"
