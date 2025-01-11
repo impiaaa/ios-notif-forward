@@ -7,14 +7,14 @@ repository = "https://github.com/impiaaa/ios-notif-forward"
 
 [dependencies]
 ancs = { git = "https://github.com/impiaaa/ancs.git", rev = "b607e24" }
-btleplug = "0.11.0"
-futures = "0.3.28"
-image = { version = "0.24.7", features = ["png"] }
-notify-rust = "4.9.0"
-tao = "0.22.2"
-tokio = { version = "1.32.0", features = ["full"] }
-tray-icon = "0.6.0"
-uuid = "1.4.1"
+btleplug = "0.11.7"
+futures = "0.3.31"
+image = { version = "0.25.5", features = ["png"] }
+notify-rust = "4.11.3"
+tao = "0.31.1"
+tokio = { version = "1.43.0", features = ["full"] }
+tray-icon = "0.19.2"
+uuid = "1.11.1"
 
 [build-dependencies]
 winres = "0.1"

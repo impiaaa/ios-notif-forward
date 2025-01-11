@@ -580,9 +580,9 @@ async fn watch_device(
     Ok(())
 }
 
-fn load_icon() -> tray_icon::icon::Icon {
+fn load_icon() -> tray_icon::Icon {
     let (icon_rgba, icon_width, icon_height) = {
-        let image = image::io::Reader::with_format(
+        let image = image::ImageReader::with_format(
             std::io::Cursor::new(include_bytes!("../icon-32-white.png")),
             image::ImageFormat::Png,
         )
@@ -593,14 +593,14 @@ fn load_icon() -> tray_icon::icon::Icon {
         let rgba = image.into_raw();
         (rgba, width, height)
     };
-    tray_icon::icon::Icon::from_rgba(icon_rgba, icon_width, icon_height).unwrap()
+    tray_icon::Icon::from_rgba(icon_rgba, icon_width, icon_height).unwrap()
 }
 
 fn main() {
     let event_loop = EventLoop::new();
 
     let quit_item = MenuItem::new("Quit", true, None);
-    let quit_id = quit_item.id();
+    let quit_id = quit_item.id().clone();
     let tray_menu = Menu::with_items(&[
         &MenuItem::new(
             concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION")),
@@ -609,7 +609,7 @@ fn main() {
         ),
         &PredefinedMenuItem::separator(),
         &quit_item,
-    ]);
+    ]).unwrap();
     let icon_tray = load_icon();
     let mut tray_icon = Some(
         TrayIconBuilder::new()
