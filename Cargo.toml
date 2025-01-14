@@ -6,15 +6,15 @@ description = "Forward notifications from Apple devices to your desktop"
 repository = "https://github.com/impiaaa/ios-notif-forward"
 
 [dependencies]
-ancs = { git = "https://github.com/impiaaa/ancs.git", rev = "b607e24" }
+ancs = { git = "https://github.com/impiaaa/ancs.git", rev = "72cdc0e" }
 btleplug = "0.11.7"
 futures = "0.3.31"
 image = { version = "0.25.5", features = ["png"] }
-notify-rust = "4.11.3"
+notify-rust = "4.11.4"
 tao = "0.31.1"
 tokio = { version = "1.43.0", features = ["full"] }
 tray-icon = "0.19.2"
-uuid = "1.11.1"
+uuid = "1.12.0"
 
 [build-dependencies]
 winres = "0.1"
