@@ -1,6 +1,6 @@
 [package]
 name = "ios-notif-forward"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Forward notifications from Apple devices to your desktop"
 repository = "https://github.com/impiaaa/ios-notif-forward"
