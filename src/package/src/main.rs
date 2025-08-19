@@ -39,12 +39,14 @@ macro_rules! DESKTOP_ENTRY_FMT {
     () => {
         "[Desktop Entry]
 Type=Application
-Version={}
+Version=1.5
 Name={}
 Icon={}
+Categories=Utility
 Exec={}
 Terminal=false
-X-GNOME-UsesNotifications=true"
+X-GNOME-UsesNotifications=true
+"
     };
 }
 
@@ -258,7 +260,7 @@ async fn main() -> Result<(), Error> {
                 desktopentry,
                 format!(
                     DESKTOP_ENTRY_FMT!(),
-                    pkg_version, pkg_name, pkg_name, pkg_name
+                    pkg_name, pkg_name, pkg_name
                 )
                 .as_bytes(),
             )
